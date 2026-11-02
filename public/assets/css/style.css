@@ -1,0 +1,754 @@
+/* ==========================================================================
+   BARBERÍA ELITE - VINTAGE & LUXURY BARBER SHOP THEME (BOOTSTRAP 5 ENHANCED)
+   Palette: Obsidian Charcoal, Brass / Barber Gold, Barber Pole Red, White & Blue
+   ========================================================================== */
+
+:root {
+  /* Barber Shop Core Brand Colors */
+  --barber-dark-bg: #0c0f15;
+  --barber-surface-1: #131822;
+  --barber-surface-2: #1b2230;
+  --barber-surface-hover: #222c3d;
+  --barber-input-bg: #090c11;
+
+  --barber-gold: #f59e0b;
+  --barber-gold-light: #fbbf24;
+  --barber-gold-dark: #b45309;
+  --barber-gold-glow: rgba(245, 158, 11, 0.28);
+
+  --barber-pole-red: #dc2626;
+  --barber-pole-blue: #2563eb;
+  --barber-pole-white: #ffffff;
+
+  --barber-border: rgba(245, 158, 11, 0.18);
+  --barber-border-subtle: rgba(255, 255, 255, 0.08);
+
+  --barber-text: #f8fafc;
+  --barber-text-muted: #94a3b8;
+  --barber-text-dim: #64748b;
+
+  --font-sans: 'Plus Jakarta Sans', system-ui, -apple-system, sans-serif;
+  --font-heading: 'Bebas Neue', 'Plus Jakarta Sans', sans-serif;
+}
+
+body.barber-app-body {
+  font-family: var(--font-sans);
+  background-color: var(--barber-dark-bg);
+  background-image: 
+    radial-gradient(circle at 10% 15%, rgba(220, 38, 38, 0.04) 0%, transparent 35%),
+    radial-gradient(circle at 90% 20%, rgba(37, 99, 235, 0.04) 0%, transparent 35%),
+    radial-gradient(circle at 50% 80%, rgba(245, 158, 11, 0.05) 0%, transparent 45%),
+    linear-gradient(to bottom, #0c0f15, #080a0e);
+  color: var(--barber-text);
+  min-height: 100vh;
+  -webkit-font-smoothing: antialiased;
+  overflow-x: hidden;
+}
+
+/* ==========================================================================
+   BARBER POLE ANIMATED STRIPE
+   ========================================================================== */
+.barber-pole-stripe {
+  height: 6px;
+  width: 100%;
+  background: repeating-linear-gradient(
+    45deg,
+    var(--barber-pole-red) 0px,
+    var(--barber-pole-red) 16px,
+    var(--barber-pole-white) 16px,
+    var(--barber-pole-white) 32px,
+    var(--barber-pole-blue) 32px,
+    var(--barber-pole-blue) 48px,
+    var(--barber-pole-white) 48px,
+    var(--barber-pole-white) 64px
+  );
+  background-size: 90px 90px;
+  animation: barberPoleScroll 15s linear infinite;
+  box-shadow: 0 0 10px rgba(0, 0, 0, 0.5);
+}
+
+@keyframes barberPoleScroll {
+  from { background-position: 0 0; }
+  to { background-position: 180px 0; }
+}
+
+/* ==========================================================================
+   NAVBAR & HEADER
+   ========================================================================== */
+.barber-navbar {
+  background: rgba(19, 24, 34, 0.92) !important;
+  backdrop-filter: blur(14px);
+  -webkit-backdrop-filter: blur(14px);
+  border-bottom: 1px solid var(--barber-border-subtle);
+}
+
+.brand-pole-emblem {
+  width: 44px;
+  height: 44px;
+  border-radius: 10px;
+  background: linear-gradient(135deg, var(--barber-gold-light), var(--barber-gold));
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  box-shadow: 0 0 16px var(--barber-gold-glow);
+  flex-shrink: 0;
+}
+
+.barber-brand-title {
+  font-family: var(--font-heading);
+  font-size: 1.55rem;
+  letter-spacing: 0.08em;
+  color: #fff;
+  line-height: 1;
+}
+
+.barber-brand-subtitle {
+  font-size: 0.72rem;
+  color: var(--barber-gold-light);
+  letter-spacing: 0.1em;
+  text-transform: uppercase;
+  font-weight: 700;
+}
+
+/* Mode Switcher Pill */
+.barber-mode-pill {
+  background: rgba(0, 0, 0, 0.45);
+  border: 1px solid var(--barber-border-subtle);
+  border-radius: 50rem;
+}
+
+.barber-mode-pill .mode-btn {
+  color: var(--barber-text-muted);
+  border: none;
+  transition: all 0.2s ease;
+  font-size: 0.85rem;
+}
+
+.barber-mode-pill .mode-btn:hover {
+  color: #fff;
+  background: rgba(255, 255, 255, 0.05);
+}
+
+.barber-mode-pill .mode-btn.active {
+  background: linear-gradient(135deg, var(--barber-gold), var(--barber-gold-dark)) !important;
+  color: #0c0f15 !important;
+  box-shadow: 0 0 14px var(--barber-gold-glow);
+}
+
+/* Database Pill */
+.barber-badge-db {
+  background: rgba(16, 185, 129, 0.12);
+  color: #6ee7b7;
+  border: 1px solid rgba(16, 185, 129, 0.3);
+  font-size: 0.78rem;
+}
+
+.db-dot-live {
+  width: 8px;
+  height: 8px;
+  background-color: #10b981;
+  border-radius: 50%;
+  display: inline-block;
+  box-shadow: 0 0 8px #10b981;
+  animation: pulseLive 2s infinite;
+}
+
+@keyframes pulseLive {
+  0% { transform: scale(0.95); opacity: 0.8; }
+  50% { transform: scale(1.15); opacity: 1; }
+  100% { transform: scale(0.95); opacity: 0.8; }
+}
+
+/* Client Session Mini Widget */
+.client-session-widget {
+  background: rgba(245, 158, 11, 0.12);
+  border: 1px solid rgba(245, 158, 11, 0.35);
+  color: #fff;
+}
+
+.client-avatar-mini {
+  font-size: 1.25rem;
+  color: var(--barber-gold);
+  line-height: 1;
+}
+
+.client-session-info {
+  display: flex;
+  flex-direction: column;
+  line-height: 1.1;
+}
+
+.client-session-name {
+  font-size: 0.82rem;
+  color: #fff;
+}
+
+.client-session-id {
+  font-size: 0.68rem;
+  color: var(--barber-gold-light);
+  font-family: monospace;
+}
+
+/* ==========================================================================
+   BUTTONS (BARBER SHOP SIGNATURE)
+   ========================================================================== */
+.btn-barber-gold {
+  background: linear-gradient(135deg, var(--barber-gold-light), var(--barber-gold));
+  color: #0c0f15 !important;
+  border: none;
+  font-weight: 700;
+  transition: all 0.25s ease;
+}
+
+.btn-barber-gold:hover {
+  background: linear-gradient(135deg, #fde047, var(--barber-gold-light));
+  transform: translateY(-1px);
+  box-shadow: 0 6px 20px var(--barber-gold-glow);
+}
+
+.btn-outline-gold {
+  border: 1px solid var(--barber-gold);
+  color: var(--barber-gold-light);
+  background: transparent;
+  font-weight: 600;
+}
+
+.btn-outline-gold:hover {
+  background: var(--barber-gold);
+  color: #0c0f15;
+}
+
+/* ==========================================================================
+   CARDS & SURFACES
+   ========================================================================== */
+.barber-card {
+  background: var(--barber-surface-1) !important;
+  border: 1px solid var(--barber-border-subtle) !important;
+  border-radius: 16px;
+  backdrop-filter: blur(10px);
+}
+
+.barber-welcome-card {
+  background: linear-gradient(135deg, #18202d, #121722) !important;
+  border: 1px solid var(--barber-border) !important;
+}
+
+.barber-step-card {
+  background: var(--barber-surface-1) !important;
+  border: 1px solid var(--barber-border-subtle) !important;
+  border-radius: 14px;
+  transition: border-color 0.2s ease;
+}
+
+.barber-step-card:hover {
+  border-color: rgba(245, 158, 11, 0.35) !important;
+}
+
+.barber-summary-card {
+  background: linear-gradient(135deg, #1a2230, #131822) !important;
+  border: 1.5px solid var(--barber-gold) !important;
+  border-radius: 16px;
+  box-shadow: 0 0 24px var(--barber-gold-glow) !important;
+}
+
+/* Step Number Badge */
+.barber-step-badge {
+  width: 32px;
+  height: 32px;
+  border-radius: 50%;
+  background: linear-gradient(135deg, var(--barber-gold-light), var(--barber-gold));
+  color: #0c0f15;
+  font-weight: 800;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 0.95rem;
+  flex-shrink: 0;
+}
+
+/* Hero Typography */
+.barber-display-title {
+  font-family: var(--font-heading);
+  font-size: 3rem;
+  letter-spacing: 0.05em;
+  color: #fff;
+  line-height: 1.05;
+  margin-bottom: 0.4rem;
+}
+
+@media (max-width: 768px) {
+  .barber-display-title { font-size: 2.2rem; }
+}
+
+.barber-vintage-badge {
+  background: rgba(245, 158, 11, 0.1);
+  border: 1px solid rgba(245, 158, 11, 0.3);
+  color: var(--barber-gold-light);
+  font-size: 0.78rem;
+}
+
+.barber-pole-dot {
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  background: var(--barber-pole-red);
+  box-shadow: 0 0 8px var(--barber-pole-red);
+}
+
+.letter-spacing-1 {
+  letter-spacing: 0.08em;
+}
+
+.max-w-650 {
+  max-width: 650px;
+}
+
+/* Avatar Circle */
+.barber-avatar-circle {
+  width: 60px;
+  height: 60px;
+  border-radius: 50%;
+  background: linear-gradient(135deg, var(--barber-gold-light), var(--barber-gold));
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  box-shadow: 0 0 16px var(--barber-gold-glow);
+}
+
+.bg-gold-subtle {
+  background-color: rgba(245, 158, 11, 0.15) !important;
+}
+
+.text-gold {
+  color: var(--barber-gold-light) !important;
+}
+
+/* ==========================================================================
+   FORMS & INPUTS
+   ========================================================================== */
+.barber-input {
+  background-color: var(--barber-input-bg) !important;
+  border: 1px solid rgba(255, 255, 255, 0.12) !important;
+  color: #fff !important;
+  border-radius: 10px;
+  padding: 0.65rem 0.95rem;
+  transition: all 0.2s ease;
+}
+
+.barber-input:focus {
+  border-color: var(--barber-gold) !important;
+  box-shadow: 0 0 0 0.25rem rgba(245, 158, 11, 0.2) !important;
+  background-color: #080b0f !important;
+}
+
+.barber-input-icon {
+  background-color: var(--barber-surface-2) !important;
+  border: 1px solid rgba(255, 255, 255, 0.12) !important;
+  color: var(--barber-gold);
+  border-top-left-radius: 10px;
+  border-bottom-left-radius: 10px;
+}
+
+.barber-alert-warning {
+  background: rgba(245, 158, 11, 0.12) !important;
+  border: 1px solid rgba(245, 158, 11, 0.35) !important;
+  color: #fef3c7 !important;
+  border-radius: 12px;
+}
+
+/* ==========================================================================
+   CLIENT PORTAL: BOOKING SELECTOR CARDS
+   ========================================================================== */
+.cards-selector-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(250px, 1fr));
+  gap: 1rem;
+}
+
+.selector-card {
+  background: var(--barber-surface-2);
+  border: 1.5px solid var(--barber-border-subtle);
+  border-radius: 12px;
+  padding: 1.15rem;
+  cursor: pointer;
+  transition: all 0.2s ease;
+  display: flex;
+  flex-direction: column;
+  justify-content: space-between;
+  position: relative;
+}
+
+.selector-card:hover {
+  border-color: rgba(245, 158, 11, 0.45);
+  background: var(--barber-surface-hover);
+  transform: translateY(-2px);
+  box-shadow: 0 6px 18px rgba(0, 0, 0, 0.4);
+}
+
+.selector-card.selected {
+  border-color: var(--barber-gold) !important;
+  background: rgba(245, 158, 11, 0.1) !important;
+  box-shadow: 0 0 16px var(--barber-gold-glow) !important;
+}
+
+.selector-card-top {
+  display: flex;
+  justify-content: space-between;
+  align-items: flex-start;
+  margin-bottom: 0.5rem;
+}
+
+.selector-card-title {
+  font-size: 1.05rem;
+  font-weight: 700;
+  color: #fff;
+}
+
+.selector-card-badge {
+  font-size: 0.72rem;
+  padding: 0.25rem 0.6rem;
+  border-radius: 50rem;
+  background: rgba(37, 99, 235, 0.18);
+  color: #93c5fd;
+  border: 1px solid rgba(37, 99, 235, 0.35);
+  font-weight: 600;
+}
+
+.selector-card-desc {
+  font-size: 0.82rem;
+  color: var(--barber-text-muted);
+  line-height: 1.4;
+  margin-bottom: 1rem;
+}
+
+.selector-card-bottom {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  padding-top: 0.65rem;
+  border-top: 1px solid rgba(255, 255, 255, 0.06);
+}
+
+.selector-card-price {
+  font-size: 1.35rem;
+  font-weight: 800;
+  color: var(--barber-gold-light);
+}
+
+.selector-card-check {
+  font-size: 0.85rem;
+  font-weight: 700;
+  color: var(--barber-gold);
+}
+
+/* Barber Selector Card */
+.barber-selector-card {
+  display: flex;
+  flex-direction: row !important;
+  align-items: center;
+  gap: 1rem;
+}
+
+.barber-avatar-thumb {
+  width: 48px;
+  height: 48px;
+  border-radius: 50%;
+  background: rgba(255, 255, 255, 0.08);
+  border: 1px solid var(--barber-border);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 1.35rem;
+  flex-shrink: 0;
+}
+
+.barber-details {
+  flex: 1;
+}
+
+.barber-name {
+  font-size: 1rem;
+  font-weight: 700;
+  color: #fff;
+}
+
+.barber-phone {
+  font-size: 0.78rem;
+  color: var(--barber-text-muted);
+}
+
+/* Time Slots Grid */
+.time-slots-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(95px, 1fr));
+  gap: 0.5rem;
+}
+
+.time-slot-btn {
+  background: var(--barber-input-bg) !important;
+  border: 1px solid rgba(255, 255, 255, 0.12) !important;
+  color: var(--barber-text) !important;
+  font-weight: 600;
+  font-size: 0.85rem;
+  padding: 0.55rem 0.2rem;
+  border-radius: 8px;
+  transition: all 0.2s ease;
+}
+
+.time-slot-btn:hover {
+  border-color: var(--barber-gold) !important;
+  background: var(--barber-surface-hover) !important;
+  color: #fff !important;
+}
+
+.time-slot-btn.selected {
+  background: var(--barber-gold) !important;
+  color: #0c0f15 !important;
+  border-color: var(--barber-gold) !important;
+  font-weight: 800;
+  box-shadow: 0 0 12px var(--barber-gold-glow);
+}
+
+.barber-price-highlight {
+  font-size: 2.2rem;
+  font-weight: 800;
+  color: var(--barber-gold-light);
+  line-height: 1;
+}
+
+/* Client Appointments List */
+.client-appts-container {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(310px, 1fr));
+  gap: 1.25rem;
+}
+
+.client-appt-card {
+  background: var(--barber-surface-2);
+  border: 1px solid var(--barber-border-subtle);
+  border-radius: 14px;
+  padding: 1.25rem;
+  display: flex;
+  flex-direction: column;
+  justify-content: space-between;
+  gap: 1rem;
+  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.3);
+  transition: all 0.2s ease;
+}
+
+.client-appt-card:hover {
+  border-color: rgba(245, 158, 11, 0.35);
+  transform: translateY(-2px);
+}
+
+.client-appt-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+}
+
+.client-appt-id {
+  font-size: 0.75rem;
+  font-weight: 700;
+  color: var(--barber-text-dim);
+  font-family: monospace;
+}
+
+.client-appt-body {
+  display: flex;
+  flex-direction: column;
+  gap: 0.35rem;
+}
+
+.client-appt-service {
+  font-size: 1.15rem;
+  font-weight: 700;
+  color: #fff;
+}
+
+.client-appt-detail {
+  font-size: 0.85rem;
+  color: var(--barber-text-muted);
+}
+
+.client-appt-price {
+  font-size: 1.25rem;
+  font-weight: 800;
+  color: var(--barber-gold-light);
+  margin-top: 0.4rem;
+}
+
+.client-appt-footer {
+  display: flex;
+  justify-content: flex-end;
+  border-top: 1px solid rgba(255, 255, 255, 0.06);
+  padding-top: 0.85rem;
+}
+
+/* ==========================================================================
+   ADMIN PANEL: KPI CARDS & TABLES
+   ========================================================================= */
+.barber-kpi-card {
+  background: var(--barber-surface-1) !important;
+  border: 1px solid var(--barber-border-subtle) !important;
+  border-radius: 14px;
+  transition: all 0.2s ease;
+}
+
+.barber-kpi-card:hover {
+  border-color: rgba(245, 158, 11, 0.3) !important;
+  transform: translateY(-2px);
+}
+
+.barber-kpi-icon {
+  width: 34px;
+  height: 34px;
+  border-radius: 8px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 1.1rem;
+}
+
+/* Bootstrap Table Styling */
+.barber-table {
+  color: var(--barber-text) !important;
+}
+
+.barber-table thead th {
+  background-color: #0b0e14 !important;
+  color: var(--barber-gold-light) !important;
+  font-weight: 700;
+  text-transform: uppercase;
+  font-size: 0.78rem;
+  letter-spacing: 0.05em;
+  padding: 1rem 0.85rem !important;
+  border-bottom: 2px solid rgba(245, 158, 11, 0.25) !important;
+}
+
+.barber-table tbody td {
+  padding: 0.95rem 0.85rem !important;
+  border-bottom: 1px solid rgba(255, 255, 255, 0.05) !important;
+  background-color: transparent !important;
+}
+
+.barber-table tbody tr:hover td {
+  background-color: var(--barber-surface-hover) !important;
+}
+
+.price-tag {
+  color: var(--barber-gold-light);
+  font-weight: 800;
+}
+
+.cell-subtext {
+  display: block;
+  font-size: 0.75rem;
+  color: var(--barber-text-dim);
+}
+
+/* Nav Pills Custom Theme */
+.nav-pills .nav-link {
+  color: var(--barber-text-muted);
+  transition: all 0.2s ease;
+}
+
+.nav-pills .nav-link:hover {
+  color: #fff;
+  background: rgba(255, 255, 255, 0.05);
+}
+
+.nav-pills .nav-link.active {
+  background: linear-gradient(135deg, var(--barber-gold), var(--barber-gold-dark)) !important;
+  color: #0c0f15 !important;
+  box-shadow: 0 0 12px var(--barber-gold-glow);
+}
+
+/* Dependency Alert inside Admin Modal */
+.dependency-alert {
+  background: rgba(245, 158, 11, 0.1);
+  border: 1px solid rgba(245, 158, 11, 0.35);
+  border-radius: 12px;
+  padding: 1rem;
+  display: flex;
+  gap: 0.85rem;
+  margin-bottom: 1rem;
+}
+
+.dependency-alert-icon {
+  font-size: 1.5rem;
+  line-height: 1;
+}
+
+.dependency-alert h4 {
+  font-size: 0.95rem;
+  font-weight: 700;
+  color: var(--barber-gold-light);
+  margin-bottom: 0.3rem;
+}
+
+.dependency-alert p {
+  font-size: 0.82rem;
+  color: var(--barber-text-muted);
+  margin-bottom: 0.4rem;
+}
+
+.dependency-alert ul {
+  list-style: none;
+  padding-left: 0;
+  font-size: 0.8rem;
+  color: #fca5a5;
+  margin-bottom: 0.65rem;
+}
+
+/* Delete Modal Icon */
+.barber-delete-icon {
+  width: 64px;
+  height: 64px;
+  border-radius: 50%;
+  background: rgba(220, 38, 38, 0.12);
+  border: 1px solid rgba(220, 38, 38, 0.3);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+/* Toast Notifications */
+.toast-container {
+  z-index: 1090;
+}
+
+.toast {
+  background: rgba(19, 24, 34, 0.96) !important;
+  border: 1px solid var(--barber-border) !important;
+  border-radius: 12px !important;
+  backdrop-filter: blur(12px);
+  color: #fff !important;
+  box-shadow: 0 10px 25px rgba(0, 0, 0, 0.6);
+}
+
+.toast-success {
+  border-left: 4px solid #10b981 !important;
+}
+
+.toast-error {
+  border-left: 4px solid #ef4444 !important;
+}
+
+.toast-warning {
+  border-left: 4px solid var(--barber-gold) !important;
+}
+
+.toast-info {
+  border-left: 4px solid #3b82f6 !important;
+}
+
+.toast-title {
+  font-weight: 700;
+  font-size: 0.9rem;
+}
+
+.toast-message {
+  font-size: 0.82rem;
+  color: var(--barber-text-muted);
+}
