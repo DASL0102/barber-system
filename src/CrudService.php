@@ -526,6 +526,314 @@ class CrudService {
     }
 
     /**
+     * Obtiene métricas analíticas avanzadas y agregaciones para las gráficas del Administrador
+     */
+    public function getAnalyticsData(): array {
+        // 1. Ingresos por fecha (últimos 14 días con pagos registrados)
+        $stmtRevenue = $this->db->query("
+            SELECT TO_CHAR(fecha_pago, 'YYYY-MM-DD') AS fecha,
+                   SUM(monto) AS total,
+                   COUNT(*) AS transacciones
+            FROM pagos
+            GROUP BY TO_CHAR(fecha_pago, 'YYYY-MM-DD')
+            ORDER BY fecha ASC
+            LIMIT 14
+        ");
+        $revenueByDate = $stmtRevenue->fetchAll();
+
+        // 2. Rendimiento por Barbero (citas totales, completadas, canceladas, ingresos y comisiones)
+        $stmtBarbers = $this->db->query("
+            SELECT b.id_barbero,
+                   b.nombre,
+                   b.porcentaje_comision,
+                   b.estado,
+                   COUNT(c.id_cita) AS total_citas,
+                   COUNT(CASE WHEN c.estado = 'Completada' THEN 1 END) AS completadas,
+                   COUNT(CASE WHEN c.estado = 'Pendiente' THEN 1 END) AS pendientes,
+                   COUNT(CASE WHEN c.estado = 'Cancelada' THEN 1 END) AS canceladas,
+                   COALESCE(SUM(p.monto), 0) AS total_ingresos,
+                   COALESCE(SUM(p.monto * (b.porcentaje_comision / 100.0)), 0) AS comisiones_generadas
+            FROM barberos b
+            LEFT JOIN citas c ON b.id_barbero = c.id_barbero
+            LEFT JOIN pagos p ON c.id_cita = p.id_cita
+            GROUP BY b.id_barbero, b.nombre, b.porcentaje_comision, b.estado
+            ORDER BY total_ingresos DESC, total_citas DESC
+        ");
+        $barberPerformance = $stmtBarbers->fetchAll();
+
+        // 3. Servicios más solicitados y recaudación por servicio
+        $stmtServices = $this->db->query("
+            SELECT s.id_servicio,
+                   s.nombre,
+                   s.precio,
+                   COUNT(c.id_cita) AS total_citas,
+                   COALESCE(SUM(p.monto), 0) AS ingresos_reales
+            FROM servicios s
+            LEFT JOIN citas c ON s.id_servicio = c.id_servicio
+            LEFT JOIN pagos p ON c.id_cita = p.id_cita
+            GROUP BY s.id_servicio, s.nombre, s.precio
+            ORDER BY total_citas DESC, ingresos_reales DESC
+        ");
+        $popularServices = $stmtServices->fetchAll();
+
+        // 4. Distribución de Citas por Estado
+        $stmtStatus = $this->db->query("
+            SELECT estado, COUNT(*) AS total
+            FROM citas
+            GROUP BY estado
+            ORDER BY total DESC
+        ");
+        $appointmentsByStatus = $stmtStatus->fetchAll();
+
+        // 5. Métodos de Pago más utilizados
+        $stmtPaymentMethods = $this->db->query("
+            SELECT metodo_pago, 
+                   COUNT(*) AS cantidad, 
+                   COALESCE(SUM(monto), 0) AS total
+            FROM pagos
+            GROUP BY metodo_pago
+            ORDER BY total DESC
+        ");
+        $paymentMethods = $stmtPaymentMethods->fetchAll();
+
+        // 6. Demanda por Horario (Horas pico de atención)
+        $stmtHours = $this->db->query("
+            SELECT TO_CHAR(hora, 'HH24:MI') AS franja,
+                   COUNT(*) AS total
+            FROM citas
+            GROUP BY TO_CHAR(hora, 'HH24:MI')
+            ORDER BY franja ASC
+        ");
+        $appointmentsByHour = $stmtHours->fetchAll();
+
+        // 7. KPIs consolidados
+        $totalIngresos = (float)$this->db->query("SELECT COALESCE(SUM(monto), 0) FROM pagos")->fetchColumn();
+        $totalCitas = (int)$this->db->query("SELECT COUNT(*) FROM citas")->fetchColumn();
+        $citasCompletadas = (int)$this->db->query("SELECT COUNT(*) FROM citas WHERE estado = 'Completada'")->fetchColumn();
+        $citasCanceladas = (int)$this->db->query("SELECT COUNT(*) FROM citas WHERE estado = 'Cancelada'")->fetchColumn();
+        $ticketPromedio = (float)$this->db->query("SELECT COALESCE(AVG(monto), 0) FROM pagos")->fetchColumn();
+
+        $tasaEfectividad = $totalCitas > 0 ? round(($citasCompletadas / $totalCitas) * 100, 1) : 0;
+        $topBarbero = !empty($barberPerformance) && isset($barberPerformance[0]['nombre']) ? $barberPerformance[0]['nombre'] : 'Por determinar';
+        $topServicio = !empty($popularServices) && isset($popularServices[0]['nombre']) ? $popularServices[0]['nombre'] : 'Por determinar';
+
+        return [
+            'kpis' => [
+                'total_ingresos' => $totalIngresos,
+                'total_citas' => $totalCitas,
+                'citas_completadas' => $citasCompletadas,
+                'citas_canceladas' => $citasCanceladas,
+                'ticket_promedio' => round($ticketPromedio, 2),
+                'tasa_efectividad' => $tasaEfectividad,
+                'top_barbero' => $topBarbero,
+                'top_servicio' => $topServicio
+            ],
+            'revenue_by_date' => $revenueByDate,
+            'barber_performance' => $barberPerformance,
+            'popular_services' => $popularServices,
+            'appointments_by_status' => $appointmentsByStatus,
+            'payment_methods' => $paymentMethods,
+            'appointments_by_hour' => $appointmentsByHour
+        ];
+    }
+
+    /**
+     * Obtiene el listado de citas de un barbero específico (para la Vista de Barbero)
+     */
+    public function getBarberAppointments(int $idBarbero): array {
+        $stmt = $this->db->prepare("
+            SELECT c.id_cita,
+                   c.fecha,
+                   c.hora,
+                   c.estado AS cita_estado,
+                   c.creado_en,
+                   cl.id_cliente,
+                   cl.nombre AS cliente_nombre,
+                   cl.telefono AS cliente_telefono,
+                   cl.cedula AS cliente_cedula,
+                   s.id_servicio,
+                   s.nombre AS servicio_nombre,
+                   s.precio AS servicio_precio,
+                   s.duracion_minutos,
+                   p.id_pago,
+                   p.monto AS pago_monto,
+                   p.metodo_pago,
+                   p.fecha_pago
+            FROM citas c
+            JOIN clientes cl ON c.id_cliente = cl.id_cliente
+            JOIN servicios s ON c.id_servicio = s.id_servicio
+            LEFT JOIN pagos p ON c.id_cita = p.id_cita
+            WHERE c.id_barbero = :id_barbero
+            ORDER BY c.fecha DESC, c.hora ASC
+        ");
+        $stmt->execute([':id_barbero' => $idBarbero]);
+        return $stmt->fetchAll();
+    }
+
+    /**
+     * Obtiene el horario y turnos asignados a un barbero
+     */
+    public function getBarberSchedule(int $idBarbero): array {
+        $stmt = $this->db->prepare("
+            SELECT h.id_horario,
+                   h.dia_semana,
+                   t.nombre_turno,
+                   t.hora_inicio,
+                   t.hora_fin
+            FROM horarios_barbero h
+            JOIN turnos_trabajo t ON h.id_turno = t.id_turno
+            WHERE h.id_barbero = :id_barbero
+            ORDER BY 
+                CASE h.dia_semana 
+                    WHEN 'Lunes' THEN 1 
+                    WHEN 'Martes' THEN 2 
+                    WHEN 'Miércoles' THEN 3 
+                    WHEN 'Jueves' THEN 4 
+                    WHEN 'Viernes' THEN 5 
+                    WHEN 'Sábado' THEN 6 
+                    WHEN 'Domingo' THEN 7 
+                    ELSE 8
+                END ASC, t.hora_inicio ASC
+        ");
+        $stmt->execute([':id_barbero' => $idBarbero]);
+        return $stmt->fetchAll();
+    }
+
+    /**
+     * Obtiene información financiera, comisiones acumuladas y liquidaciones de un barbero
+     */
+    public function getBarberFinancials(int $idBarbero): array {
+        $barbero = $this->getById('barberos', $idBarbero);
+        if (!$barbero) {
+            throw new InvalidArgumentException("Barbero no encontrado con ID {$idBarbero}.");
+        }
+
+        $comisionPct = (float)$barbero['porcentaje_comision'];
+
+        // Citas completadas con pago registrado
+        $stmtPagos = $this->db->prepare("
+            SELECT COALESCE(SUM(p.monto), 0) AS total_recaudado,
+                   COUNT(p.id_pago) AS servicios_pagados
+            FROM citas c
+            JOIN pagos p ON c.id_cita = p.id_cita
+            WHERE c.id_barbero = :id_barbero AND c.estado = 'Completada'
+        ");
+        $stmtPagos->execute([':id_barbero' => $idBarbero]);
+        $resPagos = $stmtPagos->fetch();
+
+        $totalRecaudado = (float)($resPagos['total_recaudado'] ?? 0);
+        $serviciosPagados = (int)($resPagos['servicios_pagados'] ?? 0);
+        $comisionGanada = round($totalRecaudado * ($comisionPct / 100.0), 2);
+
+        // Liquidaciones del barbero
+        $stmtLiq = $this->db->prepare("
+            SELECT id_liquidacion, fecha_corte, total_servicios, monto_comision, estado_pago
+            FROM liquidaciones_barbero
+            WHERE id_barbero = :id_barbero
+            ORDER BY fecha_corte DESC, id_liquidacion DESC
+        ");
+        $stmtLiq->execute([':id_barbero' => $idBarbero]);
+        $liquidaciones = $stmtLiq->fetchAll();
+
+        $comisionLiquidada = 0.0;
+        foreach ($liquidaciones as $liq) {
+            if ($liq['estado_pago'] === 'Pagado') {
+                $comisionLiquidada += (float)$liq['monto_comision'];
+            }
+        }
+
+        // Citas del día de hoy
+        $hoy = date('Y-m-d');
+        $stmtHoy = $this->db->prepare("
+            SELECT COUNT(*) FROM citas 
+            WHERE id_barbero = :id_barbero AND fecha = :hoy AND estado != 'Cancelada'
+        ");
+        $stmtHoy->execute([':id_barbero' => $idBarbero, ':hoy' => $hoy]);
+        $citasHoy = (int)$stmtHoy->fetchColumn();
+
+        // Citas pendientes de atención o confirmación
+        $stmtPend = $this->db->prepare("
+            SELECT COUNT(*) FROM citas 
+            WHERE id_barbero = :id_barbero AND estado = 'Pendiente'
+        ");
+        $stmtPend->execute([':id_barbero' => $idBarbero]);
+        $citasPendientes = (int)$stmtPend->fetchColumn();
+
+        // Citas confirmadas
+        $stmtConf = $this->db->prepare("
+            SELECT COUNT(*) FROM citas 
+            WHERE id_barbero = :id_barbero AND estado = 'Confirmada'
+        ");
+        $stmtConf->execute([':id_barbero' => $idBarbero]);
+        $citasConfirmadas = (int)$stmtConf->fetchColumn();
+
+        return [
+            'barbero' => $barbero,
+            'citas_hoy' => $citasHoy,
+            'citas_pendientes' => $citasPendientes,
+            'citas_confirmadas' => $citasConfirmadas,
+            'servicios_completados' => $serviciosPagados,
+            'total_recaudado' => $totalRecaudado,
+            'comision_porcentaje' => $comisionPct,
+            'comision_ganada_total' => $comisionGanada,
+            'comision_liquidada' => round($comisionLiquidada, 2),
+            'comision_por_liquidar' => max(0.0, round($comisionGanada - $comisionLiquidada, 2)),
+            'liquidaciones' => $liquidaciones
+        ];
+    }
+
+    /**
+     * Permite al barbero cambiar el estado de su cita (Confirmada, Cancelada, etc.)
+     */
+    public function updateBarberAppointmentStatus(int $idCita, int $idBarbero, string $nuevoEstado): bool {
+        $allowed = ['Pendiente', 'Confirmada', 'Completada', 'Cancelada'];
+        if (!in_array($nuevoEstado, $allowed, true)) {
+            throw new InvalidArgumentException("Estado de cita no válido.");
+        }
+
+        $stmt = $this->db->prepare("
+            UPDATE citas 
+            SET estado = :nuevo_estado
+            WHERE id_cita = :id_cita AND id_barbero = :id_barbero
+        ");
+        $stmt->execute([
+            ':nuevo_estado' => $nuevoEstado,
+            ':id_cita' => $idCita,
+            ':id_barbero' => $idBarbero
+        ]);
+
+        if ($stmt->rowCount() === 0) {
+            throw new InvalidArgumentException("No se encontró la cita o no pertenece al barbero indicado.");
+        }
+        return true;
+    }
+
+    /**
+     * Permite al barbero registrar el pago de un servicio atendido
+     */
+    public function registerBarberPayment(int $idCita, int $idBarbero, float $monto, string $metodoPago): array {
+        $stmtCita = $this->db->prepare("SELECT * FROM citas WHERE id_cita = :id_cita AND id_barbero = :id_barbero");
+        $stmtCita->execute([':id_cita' => $idCita, ':id_barbero' => $idBarbero]);
+        $cita = $stmtCita->fetch();
+
+        if (!$cita) {
+            throw new InvalidArgumentException("La cita no pertenece a este barbero o no existe.");
+        }
+
+        if ($cita['estado'] === 'Cancelada') {
+            throw new InvalidArgumentException("No es posible registrar un pago para una cita cancelada.");
+        }
+
+        // Crear pago (el trigger trg_actualizar_cita_al_pagar cambiará el estado a 'Completada' automáticamente)
+        return $this->create('pagos', [
+            'id_cita' => $idCita,
+            'monto' => $monto,
+            'metodo_pago' => $metodoPago,
+            'fecha_pago' => date('Y-m-d H:i:s')
+        ]);
+    }
+
+    /**
      * Población de datos de prueba opcional ejecutada a través del CRUD (nunca en SQL)
      */
     public function seedDemoData(): array {
@@ -569,24 +877,56 @@ class CrudService {
             $s2 = $this->create('servicios', ['nombre' => 'Arreglo de Barba Tradicional', 'descripcion' => 'Recorte, toalla caliente y bálsamo hidratante', 'precio' => 10.00, 'duracion_minutos' => 30, 'estado' => 'Activo']);
             $s3 = $this->create('servicios', ['nombre' => 'Combo Ejecutivo (Corte + Barba)', 'descripcion' => 'Experiencia completa de corte y toalla caliente para barba', 'precio' => 22.00, 'duracion_minutos' => 60, 'estado' => 'Activo']);
             $s4 = $this->create('servicios', ['nombre' => 'Tratamiento Exfoliante Facial', 'descripcion' => 'Limpieza facial profunda y mascarilla de carbón activado', 'precio' => 18.00, 'duracion_minutos' => 35, 'estado' => 'Activo']);
+            $s5 = $this->create('servicios', ['nombre' => 'Perfilado de Cejas y Barba', 'descripcion' => 'Delineado preciso con navaja japonesa y loción refrescante', 'precio' => 8.00, 'duracion_minutos' => 20, 'estado' => 'Activo']);
 
-            // 5. Clientes (con Cédula única y Correo)
+            // 5. Clientes (con Cédula única numérica y Correo)
             $c1 = $this->create('clientes', ['cedula' => '20123456', 'nombre' => 'Gabriel Torres', 'telefono' => '+58 412 1112233', 'email' => 'gabriel.torres@gmail.com']);
             $c2 = $this->create('clientes', ['cedula' => '24555888', 'nombre' => 'Fernando Rivas', 'telefono' => '+58 414 4445566', 'email' => 'f.rivas@hotmail.com']);
             $c3 = $this->create('clientes', ['cedula' => '28999111', 'nombre' => 'Leonardo Silva', 'telefono' => '+58 424 7778899', 'email' => 'leo.silva@outlook.com']);
+            $c4 = $this->create('clientes', ['cedula' => '19444333', 'nombre' => 'Andrés Gutiérrez', 'telefono' => '+58 412 5556677', 'email' => 'andres.g@gmail.com']);
+            $c5 = $this->create('clientes', ['cedula' => '23111222', 'nombre' => 'Miguel Delgado', 'telefono' => '+58 416 8889900', 'email' => 'miguel.d@gmail.com']);
+            $c6 = $this->create('clientes', ['cedula' => '26777888', 'nombre' => 'Javier Castillo', 'telefono' => '+58 424 3332211', 'email' => 'javier.c@yahoo.com']);
 
-            // 6. Citas
+            // Fechas relativas para alimentar métricas y gráficas
+            $ayer = date('Y-m-d', strtotime('-1 day'));
+            $antier = date('Y-m-d', strtotime('-2 days'));
+            $hace3Dias = date('Y-m-d', strtotime('-3 days'));
             $hoy = date('Y-m-d');
             $manana = date('Y-m-d', strtotime('+1 day'));
-            $cita1 = $this->create('citas', ['id_cliente' => $c1['id_cliente'], 'id_barbero' => $b1['id_barbero'], 'id_servicio' => $s3['id_servicio'], 'fecha' => $hoy, 'hora' => '10:00:00', 'estado' => 'Completada']);
-            $cita2 = $this->create('citas', ['id_cliente' => $c2['id_cliente'], 'id_barbero' => $b2['id_barbero'], 'id_servicio' => $s1['id_servicio'], 'fecha' => $hoy, 'hora' => '15:30:00', 'estado' => 'Pendiente']);
-            $cita3 = $this->create('citas', ['id_cliente' => $c3['id_cliente'], 'id_barbero' => $b3['id_barbero'], 'id_servicio' => $s2['id_servicio'], 'fecha' => $manana, 'hora' => '11:00:00', 'estado' => 'Pendiente']);
 
-            // 7. Pagos
-            $this->create('pagos', ['id_cita' => $cita1['id_cita'], 'monto' => 22.00, 'metodo_pago' => 'Transferencia', 'fecha_pago' => date('Y-m-d H:i:s')]);
+            // 6. Citas históricas y actuales
+            // Antier:
+            $cita1 = $this->create('citas', ['id_cliente' => $c1['id_cliente'], 'id_barbero' => $b1['id_barbero'], 'id_servicio' => $s3['id_servicio'], 'fecha' => $hace3Dias, 'hora' => '10:00:00', 'estado' => 'Completada']);
+            $cita2 = $this->create('citas', ['id_cliente' => $c2['id_cliente'], 'id_barbero' => $b2['id_barbero'], 'id_servicio' => $s1['id_servicio'], 'fecha' => $antier, 'hora' => '11:00:00', 'estado' => 'Completada']);
+            $cita3 = $this->create('citas', ['id_cliente' => $c4['id_cliente'], 'id_barbero' => $b3['id_barbero'], 'id_servicio' => $s4['id_servicio'], 'fecha' => $antier, 'hora' => '15:00:00', 'estado' => 'Completada']);
+            
+            // Ayer:
+            $cita4 = $this->create('citas', ['id_cliente' => $c3['id_cliente'], 'id_barbero' => $b1['id_barbero'], 'id_servicio' => $s1['id_servicio'], 'fecha' => $ayer, 'hora' => '09:00:00', 'estado' => 'Completada']);
+            $cita5 = $this->create('citas', ['id_cliente' => $c5['id_cliente'], 'id_barbero' => $b2['id_barbero'], 'id_servicio' => $s2['id_servicio'], 'fecha' => $ayer, 'hora' => '14:00:00', 'estado' => 'Completada']);
+            $cita6 = $this->create('citas', ['id_cliente' => $c6['id_cliente'], 'id_barbero' => $b3['id_barbero'], 'id_servicio' => $s3['id_servicio'], 'fecha' => $ayer, 'hora' => '16:00:00', 'estado' => 'Cancelada']);
 
-            // 8. Liquidaciones
-            $this->create('liquidaciones_barbero', ['id_barbero' => $b1['id_barbero'], 'fecha_corte' => $hoy, 'total_servicios' => 1, 'monto_comision' => 11.00, 'estado_pago' => 'Pendiente']);
+            // Hoy:
+            $cita7 = $this->create('citas', ['id_cliente' => $c1['id_cliente'], 'id_barbero' => $b1['id_barbero'], 'id_servicio' => $s1['id_servicio'], 'fecha' => $hoy, 'hora' => '10:00:00', 'estado' => 'Completada']);
+            $cita8 = $this->create('citas', ['id_cliente' => $c2['id_cliente'], 'id_barbero' => $b2['id_barbero'], 'id_servicio' => $s3['id_servicio'], 'fecha' => $hoy, 'hora' => '11:00:00', 'estado' => 'Confirmada']);
+            $cita9 = $this->create('citas', ['id_cliente' => $c3['id_cliente'], 'id_barbero' => $b3['id_barbero'], 'id_servicio' => $s2['id_servicio'], 'fecha' => $hoy, 'hora' => '14:00:00', 'estado' => 'Pendiente']);
+            $cita10 = $this->create('citas', ['id_cliente' => $c4['id_cliente'], 'id_barbero' => $b1['id_barbero'], 'id_servicio' => $s5['id_servicio'], 'fecha' => $hoy, 'hora' => '16:00:00', 'estado' => 'Pendiente']);
+
+            // Mañana:
+            $cita11 = $this->create('citas', ['id_cliente' => $c5['id_cliente'], 'id_barbero' => $b2['id_barbero'], 'id_servicio' => $s1['id_servicio'], 'fecha' => $manana, 'hora' => '10:00:00', 'estado' => 'Pendiente']);
+            $cita12 = $this->create('citas', ['id_cliente' => $c6['id_cliente'], 'id_barbero' => $b3['id_barbero'], 'id_servicio' => $s3['id_servicio'], 'fecha' => $manana, 'hora' => '15:00:00', 'estado' => 'Confirmada']);
+
+            // 7. Pagos para las citas completadas
+            $this->create('pagos', ['id_cita' => $cita1['id_cita'], 'monto' => 22.00, 'metodo_pago' => 'Transferencia', 'fecha_pago' => $hace3Dias . ' 11:05:00']);
+            $this->create('pagos', ['id_cita' => $cita2['id_cita'], 'monto' => 15.00, 'metodo_pago' => 'Pago Móvil', 'fecha_pago' => $antier . ' 11:50:00']);
+            $this->create('pagos', ['id_cita' => $cita3['id_cita'], 'monto' => 18.00, 'metodo_pago' => 'Efectivo', 'fecha_pago' => $antier . ' 15:45:00']);
+            $this->create('pagos', ['id_cita' => $cita4['id_cita'], 'monto' => 15.00, 'metodo_pago' => 'Punto de Venta', 'fecha_pago' => $ayer . ' 09:48:00']);
+            $this->create('pagos', ['id_cita' => $cita5['id_cita'], 'monto' => 10.00, 'metodo_pago' => 'Efectivo', 'fecha_pago' => $ayer . ' 14:35:00']);
+            $this->create('pagos', ['id_cita' => $cita7['id_cita'], 'monto' => 15.00, 'metodo_pago' => 'Pago Móvil', 'fecha_pago' => $hoy . ' 10:45:00']);
+
+            // 8. Liquidaciones registradas para los barberos
+            $this->create('liquidaciones_barbero', ['id_barbero' => $b1['id_barbero'], 'fecha_corte' => $ayer, 'total_servicios' => 2, 'monto_comision' => 18.50, 'estado_pago' => 'Pagado']);
+            $this->create('liquidaciones_barbero', ['id_barbero' => $b2['id_barbero'], 'fecha_corte' => $ayer, 'total_servicios' => 2, 'monto_comision' => 11.25, 'estado_pago' => 'Pendiente']);
+            $this->create('liquidaciones_barbero', ['id_barbero' => $b3['id_barbero'], 'fecha_corte' => $ayer, 'total_servicios' => 1, 'monto_comision' => 9.00, 'estado_pago' => 'Pendiente']);
 
             $this->db->commit();
             return ['message' => 'Datos demo generados exitosamente a través del CRUD.', 'seeded' => true];

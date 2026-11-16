@@ -17,8 +17,9 @@ const ADMIN_PASSWORD_DEFAULT = 'admin123'; // Default academic evaluation key
 
 // Application State
 const state = {
-  viewMode: 'client', // 'client' or 'admin'
+  viewMode: 'client', // 'client', 'barber', or 'admin'
   activeClient: JSON.parse(localStorage.getItem('barberia_active_client') || 'null'),
+  activeBarber: JSON.parse(localStorage.getItem('barberia_active_barber') || 'null'),
   isAdminAuthenticated: sessionStorage.getItem('barberia_admin_authenticated') === 'true',
   clientBooking: {
     serviceId: null,
@@ -27,7 +28,13 @@ const state = {
     time: null
   },
   clientAppointments: [],
-  currentTab: 'clientes',
+  barberData: {
+    financials: null,
+    appointments: [],
+    schedule: []
+  },
+  barberApptFilter: 'hoy',
+  currentTab: 'analytics', // Default view in Admin is the Analytics & Charts Dashboard
   data: {},
   counts: {},
   options: {
@@ -38,6 +45,8 @@ const state = {
     citas: []
   },
   stats: {},
+  analyticsData: null,
+  chartInstances: {},
   filterText: '',
   editingId: null,
   deletingId: null,
@@ -248,6 +257,7 @@ document.addEventListener('DOMContentLoaded', () => {
   initViewModes();
   initClientAuth();
   initClientBooking();
+  initBarberPortal();
   initTabs();
   initSearch();
   initModals();
@@ -266,12 +276,18 @@ document.addEventListener('DOMContentLoaded', () => {
       setupLoggedOutClient();
     }
 
+    if (state.activeBarber) {
+      setupLoggedInBarber(state.activeBarber);
+    } else {
+      setupLoggedOutBarber();
+    }
+
     switchViewMode(state.viewMode);
   });
 });
 
 // ==========================================================================
-// VIEW MODES & ADMIN AUTHENTICATION
+// VIEW MODES & AUTHENTICATION
 // ==========================================================================
 let adminAuthModalInstance = null;
 function getAdminAuthModal() {
@@ -325,10 +341,14 @@ window.logoutAdmin = function() {
 
 function initViewModes() {
   const btnModeClient = document.getElementById('btnModeClient');
+  const btnModeBarber = document.getElementById('btnModeBarber');
   const btnModeAdmin = document.getElementById('btnModeAdmin');
 
   if (btnModeClient) {
     btnModeClient.addEventListener('click', () => switchViewMode('client'));
+  }
+  if (btnModeBarber) {
+    btnModeBarber.addEventListener('click', () => switchViewMode('barber'));
   }
   if (btnModeAdmin) {
     btnModeAdmin.addEventListener('click', () => handleAdminAccess());
@@ -338,36 +358,69 @@ function initViewModes() {
 window.switchViewMode = function(mode) {
   state.viewMode = mode;
   const btnModeClient = document.getElementById('btnModeClient');
+  const btnModeBarber = document.getElementById('btnModeBarber');
   const btnModeAdmin = document.getElementById('btnModeAdmin');
+
   const clientView = document.getElementById('clientPortalView');
+  const barberView = document.getElementById('barberPortalView');
   const adminView = document.getElementById('adminPanelView');
+
   const adminActions = document.getElementById('adminHeaderActions');
+  const barberActions = document.getElementById('barberHeaderActions');
   const clientWidget = document.getElementById('clientSessionWidget');
+  const barberWidget = document.getElementById('barberSessionWidget');
+
+  // Deactivate all navbar buttons
+  if (btnModeClient) btnModeClient.classList.remove('active');
+  if (btnModeBarber) btnModeBarber.classList.remove('active');
+  if (btnModeAdmin) btnModeAdmin.classList.remove('active');
+
+  // Hide all main views & action headers
+  if (clientView) clientView.style.display = 'none';
+  if (barberView) barberView.style.display = 'none';
+  if (adminView) adminView.style.display = 'none';
+
+  if (adminActions) adminActions.style.display = 'none';
+  if (barberActions) barberActions.style.display = 'none';
+  if (clientWidget) clientWidget.style.display = 'none';
+  if (barberWidget) barberWidget.style.display = 'none';
 
   if (mode === 'client') {
     if (btnModeClient) btnModeClient.classList.add('active');
-    if (btnModeAdmin) btnModeAdmin.classList.remove('active');
     if (clientView) clientView.style.display = 'block';
-    if (adminView) adminView.style.display = 'none';
-    if (adminActions) adminActions.style.display = 'none';
 
     if (state.activeClient) {
       if (clientWidget) clientWidget.style.display = 'flex';
       renderClientBookingCatalog();
-    } else {
-      if (clientWidget) clientWidget.style.display = 'none';
     }
-  } else {
-    // Mode is admin
+  } else if (mode === 'barber') {
+    if (btnModeBarber) btnModeBarber.classList.add('active');
+    if (barberView) barberView.style.display = 'block';
+    if (barberActions) barberActions.style.display = 'flex';
+
+    if (state.activeBarber) {
+      if (barberWidget) barberWidget.style.display = 'flex';
+      setupLoggedInBarber(state.activeBarber);
+      loadBarberData();
+    } else {
+      setupLoggedOutBarber();
+      renderBarberSelectionList();
+    }
+  } else if (mode === 'admin') {
     if (btnModeAdmin) btnModeAdmin.classList.add('active');
-    if (btnModeClient) btnModeClient.classList.remove('active');
-    if (clientView) clientView.style.display = 'none';
     if (adminView) adminView.style.display = 'block';
     if (adminActions) adminActions.style.display = 'flex';
-    if (clientWidget) clientWidget.style.display = 'none';
 
     loadStats();
-    loadTable(state.currentTab);
+    if (state.currentTab === 'analytics') {
+      const analyticsContainer = document.getElementById('adminAnalyticsContainer');
+      const crudContainer = document.getElementById('adminCrudTableContainer');
+      if (analyticsContainer) analyticsContainer.style.display = 'block';
+      if (crudContainer) crudContainer.style.display = 'none';
+      loadAnalyticsAndCharts();
+    } else {
+      loadTable(state.currentTab);
+    }
   }
 };
 
@@ -943,16 +996,30 @@ function switchTab(table) {
     btn.classList.toggle('active', btn.getAttribute('data-table') === table);
   });
 
-  const config = TABLES_CONFIG[table];
-  const titleEl = document.getElementById('currentTableTitle');
-  const descEl = document.getElementById('currentTableDesc');
-  const addBtnText = document.getElementById('btnAddRecordText');
+  const analyticsContainer = document.getElementById('adminAnalyticsContainer');
+  const crudContainer = document.getElementById('adminCrudTableContainer');
 
-  if (titleEl) titleEl.innerText = config.title;
-  if (descEl) descEl.innerText = `Gestión CRUD de ${config.title.toLowerCase()} registrados en el sistema con validación de restricciones en PostgreSQL.`;
-  if (addBtnText) addBtnText.innerText = `+ Nuevo ${config.singular}`;
+  if (table === 'analytics') {
+    if (analyticsContainer) analyticsContainer.style.display = 'block';
+    if (crudContainer) crudContainer.style.display = 'none';
+    loadAnalyticsAndCharts();
+  } else {
+    if (analyticsContainer) analyticsContainer.style.display = 'none';
+    if (crudContainer) crudContainer.style.display = 'block';
 
-  loadTable(table);
+    const config = TABLES_CONFIG[table];
+    if (config) {
+      const titleEl = document.getElementById('currentTableTitle');
+      const descEl = document.getElementById('currentTableDesc');
+      const addBtnText = document.getElementById('btnAddRecordText');
+
+      if (titleEl) titleEl.innerText = config.title;
+      if (descEl) descEl.innerText = `Gestión CRUD de ${config.title.toLowerCase()} registrados en el sistema con validación de restricciones en PostgreSQL.`;
+      if (addBtnText) addBtnText.innerText = `+ Nuevo ${config.singular}`;
+
+      loadTable(table);
+    }
+  }
 }
 
 // ==========================================================================
@@ -1170,6 +1237,24 @@ function escapeHtml(text) {
   const div = document.createElement('div');
   div.textContent = text;
   return div.innerHTML;
+}
+
+function formatCurrency(val) {
+  const num = parseFloat(val);
+  return isNaN(num) ? '$0.00' : '$' + num.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+}
+
+function formatTime(timeStr) {
+  if (!timeStr) return '';
+  const parts = String(timeStr).split(':');
+  if (parts.length < 2) return String(timeStr);
+  let hours = parseInt(parts[0], 10);
+  const minutes = parts[1];
+  const ampm = hours >= 12 ? 'PM' : 'AM';
+  hours = hours % 12;
+  hours = hours ? hours : 12;
+  const strHours = hours < 10 ? '0' + hours : hours;
+  return `${strHours}:${minutes} ${ampm}`;
 }
 
 // ==========================================================================
@@ -1628,7 +1713,11 @@ function initActions() {
       showToast('Sincronizando', 'Consultando datos actualizados de PostgreSQL...', 'info');
       await loadOptions();
       await loadStats();
-      await loadTable(state.currentTab);
+      if (state.currentTab === 'analytics') {
+        await loadAnalyticsAndCharts();
+      } else {
+        await loadTable(state.currentTab);
+      }
       showToast('Actualizado', 'Datos sincronizados exitosamente.', 'success');
     });
   }
@@ -1646,7 +1735,11 @@ function initActions() {
         showToast('Datos Demo', res.message, res.seeded ? 'success' : 'warning');
         await loadOptions();
         await loadStats();
-        await loadTable(state.currentTab);
+        if (state.currentTab === 'analytics') {
+          await loadAnalyticsAndCharts();
+        } else {
+          await loadTable(state.currentTab);
+        }
       } catch (e) {
         // Handled
       } finally {
@@ -1696,3 +1789,857 @@ function showToast(title, message, type = 'info') {
     setTimeout(() => toast.remove(), 400);
   }, 4500);
 }
+
+// ==========================================================================
+// ADMIN ANALYTICS & INTERACTIVE CHARTS (CHART.JS)
+// ==========================================================================
+
+const CHART_THEME = {
+  fontFamily: "'Plus Jakarta Sans', system-ui, -apple-system, sans-serif",
+  textMuted: '#94a3b8',
+  textLight: '#f8fafc',
+  gridColor: 'rgba(255, 255, 255, 0.06)',
+  gold: '#f59e0b',
+  goldBg: 'rgba(245, 158, 11, 0.15)',
+  blue: '#3b82f6',
+  blueBg: 'rgba(59, 130, 246, 0.2)',
+  green: '#10b981',
+  greenBg: 'rgba(16, 185, 129, 0.2)',
+  red: '#ef4444',
+  purple: '#8b5cf6',
+  cyan: '#06b6d4',
+  palette: ['#f59e0b', '#3b82f6', '#10b981', '#ec4899', '#8b5cf6', '#06b6d4', '#eab308']
+};
+
+function destroyChart(id) {
+  if (state.chartInstances[id]) {
+    try {
+      state.chartInstances[id].destroy();
+    } catch (e) {
+      console.warn('Error destroying chart', id, e);
+    }
+    delete state.chartInstances[id];
+  }
+}
+
+async function loadAnalyticsAndCharts() {
+  try {
+    const res = await apiRequest(`${API_BASE}?action=analytics`);
+    state.analyticsData = res.data;
+
+    // 1. Update High-level KPI Insights
+    const kpis = res.data.kpis || {};
+    const anaTopBarbero = document.getElementById('anaTopBarbero');
+    const anaTopServicio = document.getElementById('anaTopServicio');
+    const anaTicketPromedio = document.getElementById('anaTicketPromedio');
+    const anaTasaEfectividad = document.getElementById('anaTasaEfectividad');
+
+    if (anaTopBarbero) anaTopBarbero.innerText = kpis.top_barbero || 'Por determinar';
+    if (anaTopServicio) anaTopServicio.innerText = kpis.top_servicio || 'Por determinar';
+    if (anaTicketPromedio) anaTicketPromedio.innerText = formatCurrency(kpis.ticket_promedio || 0);
+    if (anaTasaEfectividad) anaTasaEfectividad.innerText = `${kpis.tasa_efectividad || 0}%`;
+
+    // 2. Render all 6 Chart.js graphs
+    renderCharts(res.data);
+  } catch (err) {
+    console.error('Error loading analytics:', err);
+  }
+}
+
+function renderCharts(data) {
+  if (typeof Chart === 'undefined') {
+    console.warn('Chart.js is not loaded yet');
+    return;
+  }
+
+  // Set default Chart.js styling
+  Chart.defaults.color = CHART_THEME.textMuted;
+  Chart.defaults.font.family = CHART_THEME.fontFamily;
+
+  renderRevenueDateChart(data.revenue_by_date || []);
+  renderAppointmentStatusChart(data.appointments_by_status || []);
+  renderBarberPerformanceChart(data.barber_performance || []);
+  renderPopularServicesChart(data.popular_services || []);
+  renderPaymentMethodsChart(data.payment_methods || []);
+  renderAppointmentsByHourChart(data.appointments_by_hour || []);
+}
+
+// 1. Facturación Diaria (Línea / Curva con Área)
+function renderRevenueDateChart(revenueData) {
+  const ctx = document.getElementById('chartRevenueDate');
+  if (!ctx) return;
+  destroyChart('chartRevenueDate');
+
+  const labels = revenueData.length > 0 ? revenueData.map(r => r.fecha) : ['Sin datos'];
+  const totals = revenueData.length > 0 ? revenueData.map(r => parseFloat(r.total)) : [0];
+
+  state.chartInstances['chartRevenueDate'] = new Chart(ctx, {
+    type: 'line',
+    data: {
+      labels: labels,
+      datasets: [{
+        label: 'Ingresos Diarios ($)',
+        data: totals,
+        borderColor: CHART_THEME.gold,
+        backgroundColor: CHART_THEME.goldBg,
+        borderWidth: 3,
+        tension: 0.35,
+        fill: true,
+        pointBackgroundColor: CHART_THEME.gold,
+        pointBorderColor: '#ffffff',
+        pointHoverRadius: 7,
+        pointRadius: 4
+      }]
+    },
+    options: {
+      responsive: true,
+      maintainAspectRatio: false,
+      plugins: {
+        legend: { display: false },
+        tooltip: {
+          backgroundColor: '#131822',
+          titleColor: '#f59e0b',
+          bodyColor: '#f8fafc',
+          borderColor: 'rgba(245, 158, 11, 0.4)',
+          borderWidth: 1,
+          padding: 10,
+          callbacks: {
+            label: function(context) {
+              return `Facturado: $${parseFloat(context.parsed.y).toFixed(2)}`;
+            }
+          }
+        }
+      },
+      scales: {
+        x: {
+          grid: { color: CHART_THEME.gridColor },
+          ticks: { color: CHART_THEME.textMuted }
+        },
+        y: {
+          grid: { color: CHART_THEME.gridColor },
+          ticks: {
+            color: CHART_THEME.textMuted,
+            callback: function(val) { return '$' + val; }
+          },
+          beginAtZero: true
+        }
+      }
+    }
+  });
+}
+
+// 2. Estado de Citas (Doughnut)
+function renderAppointmentStatusChart(statusData) {
+  const ctx = document.getElementById('chartAppointmentStatus');
+  if (!ctx) return;
+  destroyChart('chartAppointmentStatus');
+
+  const statusColors = {
+    'Completada': '#10b981',
+    'Confirmada': '#3b82f6',
+    'Pendiente': '#f59e0b',
+    'Cancelada': '#ef4444'
+  };
+
+  const labels = statusData.length > 0 ? statusData.map(s => s.estado) : ['Sin citas'];
+  const counts = statusData.length > 0 ? statusData.map(s => parseInt(s.total, 10)) : [1];
+  const bgColors = statusData.length > 0 ? statusData.map(s => statusColors[s.estado] || '#64748b') : ['#334155'];
+
+  state.chartInstances['chartAppointmentStatus'] = new Chart(ctx, {
+    type: 'doughnut',
+    data: {
+      labels: labels,
+      datasets: [{
+        data: counts,
+        backgroundColor: bgColors,
+        borderWidth: 2,
+        borderColor: '#131822',
+        hoverOffset: 6
+      }]
+    },
+    options: {
+      responsive: true,
+      maintainAspectRatio: false,
+      plugins: {
+        legend: {
+          position: 'bottom',
+          labels: { boxWidth: 12, padding: 14, color: '#e2e8f0' }
+        },
+        tooltip: {
+          backgroundColor: '#131822',
+          titleColor: '#f59e0b',
+          bodyColor: '#f8fafc',
+          borderColor: 'rgba(255, 255, 255, 0.1)',
+          borderWidth: 1
+        }
+      },
+      cutout: '68%'
+    }
+  });
+}
+
+// 3. Desempeño por Barbero (Barras Agrupadas: Citas e Ingresos)
+function renderBarberPerformanceChart(barberData) {
+  const ctx = document.getElementById('chartBarberPerformance');
+  if (!ctx) return;
+  destroyChart('chartBarberPerformance');
+
+  const labels = barberData.length > 0 ? barberData.map(b => b.nombre) : ['Sin barberos'];
+  const citas = barberData.length > 0 ? barberData.map(b => parseInt(b.total_citas, 10)) : [0];
+  const ingresos = barberData.length > 0 ? barberData.map(b => parseFloat(b.total_ingresos)) : [0];
+
+  state.chartInstances['chartBarberPerformance'] = new Chart(ctx, {
+    type: 'bar',
+    data: {
+      labels: labels,
+      datasets: [
+        {
+          label: 'Citas Atendidas',
+          data: citas,
+          backgroundColor: 'rgba(59, 130, 246, 0.75)',
+          borderColor: '#3b82f6',
+          borderWidth: 1,
+          borderRadius: 6,
+          yAxisID: 'y'
+        },
+        {
+          label: 'Total Facturado ($)',
+          data: ingresos,
+          backgroundColor: 'rgba(245, 158, 11, 0.85)',
+          borderColor: '#f59e0b',
+          borderWidth: 1,
+          borderRadius: 6,
+          yAxisID: 'y1'
+        }
+      ]
+    },
+    options: {
+      responsive: true,
+      maintainAspectRatio: false,
+      plugins: {
+        legend: {
+          position: 'top',
+          labels: { boxWidth: 12, color: '#e2e8f0' }
+        },
+        tooltip: {
+          backgroundColor: '#131822',
+          titleColor: '#f59e0b',
+          bodyColor: '#f8fafc',
+          borderColor: 'rgba(255, 255, 255, 0.1)',
+          borderWidth: 1
+        }
+      },
+      scales: {
+        x: {
+          grid: { color: CHART_THEME.gridColor },
+          ticks: { color: CHART_THEME.textMuted }
+        },
+        y: {
+          type: 'linear',
+          display: true,
+          position: 'left',
+          grid: { color: CHART_THEME.gridColor },
+          ticks: { color: CHART_THEME.textMuted, beginAtZero: true, stepSize: 1 },
+          title: { display: true, text: 'Citas', color: CHART_THEME.textMuted }
+        },
+        y1: {
+          type: 'linear',
+          display: true,
+          position: 'right',
+          grid: { drawOnChartArea: false },
+          ticks: {
+            color: '#f59e0b',
+            callback: function(val) { return '$' + val; }
+          },
+          title: { display: true, text: 'Facturación ($)', color: '#f59e0b' }
+        }
+      }
+    }
+  });
+}
+
+// 4. Servicios Más Populares (Doughnut)
+function renderPopularServicesChart(serviceData) {
+  const ctx = document.getElementById('chartPopularServices');
+  if (!ctx) return;
+  destroyChart('chartPopularServices');
+
+  const labels = serviceData.length > 0 ? serviceData.map(s => s.nombre) : ['Sin servicios'];
+  const counts = serviceData.length > 0 ? serviceData.map(s => parseInt(s.total_citas, 10)) : [1];
+  const bgColors = labels.map((_, i) => CHART_THEME.palette[i % CHART_THEME.palette.length]);
+
+  state.chartInstances['chartPopularServices'] = new Chart(ctx, {
+    type: 'doughnut',
+    data: {
+      labels: labels,
+      datasets: [{
+        data: counts,
+        backgroundColor: bgColors,
+        borderWidth: 2,
+        borderColor: '#131822',
+        hoverOffset: 6
+      }]
+    },
+    options: {
+      responsive: true,
+      maintainAspectRatio: false,
+      plugins: {
+        legend: {
+          position: 'bottom',
+          labels: { boxWidth: 12, padding: 12, color: '#e2e8f0' }
+        },
+        tooltip: {
+          backgroundColor: '#131822',
+          titleColor: '#f59e0b',
+          bodyColor: '#f8fafc',
+          borderColor: 'rgba(255, 255, 255, 0.1)',
+          borderWidth: 1
+        }
+      },
+      cutout: '62%'
+    }
+  });
+}
+
+// 5. Métodos de Pago Más Utilizados (Barras Horizontales)
+function renderPaymentMethodsChart(paymentData) {
+  const ctx = document.getElementById('chartPaymentMethods');
+  if (!ctx) return;
+  destroyChart('chartPaymentMethods');
+
+  const labels = paymentData.length > 0 ? paymentData.map(p => p.metodo_pago) : ['Sin pagos'];
+  const totals = paymentData.length > 0 ? paymentData.map(p => parseFloat(p.total)) : [0];
+  const bgColors = labels.map((_, i) => CHART_THEME.palette[(i + 2) % CHART_THEME.palette.length]);
+
+  state.chartInstances['chartPaymentMethods'] = new Chart(ctx, {
+    type: 'bar',
+    data: {
+      labels: labels,
+      datasets: [{
+        label: 'Recaudado ($)',
+        data: totals,
+        backgroundColor: bgColors,
+        borderRadius: 6
+      }]
+    },
+    options: {
+      indexAxis: 'y',
+      responsive: true,
+      maintainAspectRatio: false,
+      plugins: {
+        legend: { display: false },
+        tooltip: {
+          backgroundColor: '#131822',
+          titleColor: '#f59e0b',
+          bodyColor: '#f8fafc',
+          borderColor: 'rgba(255, 255, 255, 0.1)',
+          borderWidth: 1,
+          callbacks: {
+            label: function(context) {
+              return `Total Recaudado: $${parseFloat(context.parsed.x).toFixed(2)}`;
+            }
+          }
+        }
+      },
+      scales: {
+        x: {
+          grid: { color: CHART_THEME.gridColor },
+          ticks: {
+            color: CHART_THEME.textMuted,
+            callback: function(val) { return '$' + val; }
+          },
+          beginAtZero: true
+        },
+        y: {
+          grid: { color: CHART_THEME.gridColor },
+          ticks: { color: '#e2e8f0' }
+        }
+      }
+    }
+  });
+}
+
+// 6. Horarios Pico de Demanda (Barras)
+function renderAppointmentsByHourChart(hourData) {
+  const ctx = document.getElementById('chartAppointmentsByHour');
+  if (!ctx) return;
+  destroyChart('chartAppointmentsByHour');
+
+  const labels = hourData.length > 0 ? hourData.map(h => formatTime(h.franja + ':00')) : ['08:00', '10:00', '12:00', '14:00', '16:00'];
+  const totals = hourData.length > 0 ? hourData.map(h => parseInt(h.total, 10)) : [0, 0, 0, 0, 0];
+
+  state.chartInstances['chartAppointmentsByHour'] = new Chart(ctx, {
+    type: 'bar',
+    data: {
+      labels: labels,
+      datasets: [{
+        label: 'Citas Reservadas',
+        data: totals,
+        backgroundColor: 'rgba(139, 92, 246, 0.75)',
+        borderColor: '#8b5cf6',
+        borderWidth: 1,
+        borderRadius: 6
+      }]
+    },
+    options: {
+      responsive: true,
+      maintainAspectRatio: false,
+      plugins: {
+        legend: { display: false },
+        tooltip: {
+          backgroundColor: '#131822',
+          titleColor: '#a78bfa',
+          bodyColor: '#f8fafc',
+          borderColor: 'rgba(255, 255, 255, 0.1)',
+          borderWidth: 1
+        }
+      },
+      scales: {
+        x: {
+          grid: { color: CHART_THEME.gridColor },
+          ticks: { color: CHART_THEME.textMuted }
+        },
+        y: {
+          grid: { color: CHART_THEME.gridColor },
+          ticks: { color: CHART_THEME.textMuted, stepSize: 1 },
+          beginAtZero: true
+        }
+      }
+    }
+  });
+}
+
+// ==========================================================================
+// BARBER PORTAL CONTROLLER (VISTA DE BARBERO)
+// ==========================================================================
+
+function initBarberPortal() {
+  // Setup if needed
+}
+
+function setupLoggedInBarber(barbero) {
+  const nameEl = document.getElementById('dashBarberName');
+  const phoneEl = document.getElementById('dashBarberPhone');
+  const comBadge = document.getElementById('dashBarberComisionBadge');
+  const sessName = document.getElementById('sessionBarberName');
+  const sessCom = document.getElementById('sessionBarberComision');
+
+  if (nameEl) nameEl.innerText = barbero.nombre;
+  if (phoneEl) phoneEl.innerText = barbero.telefono || 'Sin teléfono';
+  if (comBadge) comBadge.innerText = `Comisión: ${barbero.porcentaje_comision}%`;
+  if (sessName) sessName.innerText = barbero.nombre;
+  if (sessCom) sessCom.innerText = `${barbero.porcentaje_comision}% Comisión`;
+
+  const authSection = document.getElementById('barberAuthSection');
+  const dashSection = document.getElementById('barberDashboardSection');
+  const sessWidget = document.getElementById('barberSessionWidget');
+
+  if (authSection) authSection.style.display = 'none';
+  if (dashSection) dashSection.style.display = 'block';
+  if (sessWidget) sessWidget.style.display = 'flex';
+}
+
+function setupLoggedOutBarber() {
+  const authSection = document.getElementById('barberAuthSection');
+  const dashSection = document.getElementById('barberDashboardSection');
+  const sessWidget = document.getElementById('barberSessionWidget');
+
+  if (authSection) authSection.style.display = 'block';
+  if (dashSection) dashSection.style.display = 'none';
+  if (sessWidget) sessWidget.style.display = 'none';
+}
+
+async function renderBarberSelectionList() {
+  const container = document.getElementById('barberCardsContainer');
+  if (!container) return;
+
+  container.innerHTML = `
+    <div class="col-12 text-center text-secondary py-5">
+      <div class="spinner-border text-warning spinner-border-sm" role="status"></div>
+      <p class="mt-2 mb-0">Cargando barberos profesionales...</p>
+    </div>
+  `;
+
+  try {
+    const res = await apiRequest(`${API_BASE}?resource=barberos`);
+    const barberos = (res.data || []).filter(b => b.estado === 'Activo');
+
+    if (barberos.length === 0) {
+      container.innerHTML = `
+        <div class="col-12 text-center py-5">
+          <p class="text-secondary">No hay barberos registrados o activos.</p>
+          <button type="button" class="btn btn-sm btn-barber-gold rounded-pill" onclick="switchViewMode('admin')">
+            Ir al Administrador a registrar barberos
+          </button>
+        </div>
+      `;
+      return;
+    }
+
+    container.innerHTML = barberos.map(b => `
+      <div class="col-12 col-md-6 col-lg-4">
+        <div class="card barber-profile-card h-100 p-4 text-center shadow-lg" onclick="selectBarber(${b.id_barbero})">
+          <div class="barber-profile-avatar">
+            <i class="bi bi-scissors"></i>
+          </div>
+          <h4 class="fw-bold text-light mb-1">${escapeHtml(b.nombre)}</h4>
+          <span class="badge bg-gold-subtle text-gold fw-bold mb-3 d-inline-block px-3 py-1">
+            ${b.porcentaje_comision}% Comisión
+          </span>
+          <p class="text-secondary small mb-3">
+            <i class="bi bi-telephone text-info me-1"></i> ${escapeHtml(b.telefono || 'Sin teléfono')}
+          </p>
+          <button type="button" class="btn btn-barber-gold w-100 rounded-pill py-2 fw-bold shadow-sm">
+            <i class="bi bi-box-arrow-in-right me-1"></i> Iniciar Turno
+          </button>
+        </div>
+      </div>
+    `).join('');
+
+  } catch (err) {
+    container.innerHTML = `<div class="col-12 text-center text-danger py-4">Error cargando barberos: ${escapeHtml(err.message)}</div>`;
+  }
+}
+
+window.selectBarber = async function(idBarbero) {
+  try {
+    const res = await apiRequest(`${API_BASE}?resource=barberos&id=${idBarbero}`);
+    const barbero = res.data;
+    if (!barbero) return;
+
+    state.activeBarber = barbero;
+    localStorage.setItem('barberia_active_barber', JSON.stringify(barbero));
+    setupLoggedInBarber(barbero);
+    await loadBarberData();
+    showToast('¡Turno Iniciado!', `Bienvenido ${barbero.nombre}. Tu agenda y comisiones están listas.`, 'success');
+  } catch (err) {
+    // Handled
+  }
+};
+
+window.logoutBarber = function() {
+  state.activeBarber = null;
+  localStorage.removeItem('barberia_active_barber');
+  setupLoggedOutBarber();
+  renderBarberSelectionList();
+  showToast('Turno Cerrado', 'Has salido del perfil de barbero.', 'info');
+};
+
+window.refreshBarberData = async function() {
+  if (!state.activeBarber) return;
+  showToast('Actualizando', 'Sincronizando citas y comisiones...', 'info');
+  await loadBarberData();
+  showToast('Actualizado', 'Tu agenda está al día.', 'success');
+};
+
+async function loadBarberData() {
+  if (!state.activeBarber) return;
+  try {
+    const res = await apiRequest(`${API_BASE}?action=barber_data&id_barbero=${state.activeBarber.id_barbero}`);
+    state.barberData = res.data;
+
+    // 1. KPIs
+    const fin = res.data.financials || {};
+    const bStatHoy = document.getElementById('bStatHoy');
+    const bStatPendientes = document.getElementById('bStatPendientes');
+    const bStatConfirmadas = document.getElementById('bStatConfirmadas');
+    const bStatCompletadas = document.getElementById('bStatCompletadas');
+    const bStatComisiones = document.getElementById('bStatComisiones');
+    const bStatPorLiquidar = document.getElementById('bStatPorLiquidar');
+
+    if (bStatHoy) bStatHoy.innerText = fin.citas_hoy || 0;
+    if (bStatPendientes) bStatPendientes.innerText = fin.citas_pendientes || 0;
+    if (bStatConfirmadas) bStatConfirmadas.innerText = fin.citas_confirmadas || 0;
+    if (bStatCompletadas) bStatCompletadas.innerText = fin.servicios_completados || 0;
+    if (bStatComisiones) bStatComisiones.innerText = formatCurrency(fin.comision_ganada_total || 0);
+    if (bStatPorLiquidar) bStatPorLiquidar.innerText = formatCurrency(fin.comision_por_liquidar || 0);
+
+    // 2. Render panels
+    renderBarberAppointments(state.barberApptFilter);
+    renderBarberSchedule(res.data.schedule || []);
+    renderBarberFinancials(fin);
+  } catch (err) {
+    console.error('Error loading barber data:', err);
+  }
+}
+
+window.switchBarberTab = function(tab) {
+  const btnAppts = document.getElementById('btnBarberTabAppts');
+  const btnSchedule = document.getElementById('btnBarberTabSchedule');
+  const btnFinancials = document.getElementById('btnBarberTabFinancials');
+
+  const panelAppts = document.getElementById('barberPanelAppts');
+  const panelSchedule = document.getElementById('barberPanelSchedule');
+  const panelFinancials = document.getElementById('barberPanelFinancials');
+
+  [btnAppts, btnSchedule, btnFinancials].forEach(b => b && b.classList.remove('active'));
+  [panelAppts, panelSchedule, panelFinancials].forEach(p => p && (p.style.display = 'none'));
+
+  if (tab === 'schedule') {
+    if (btnSchedule) btnSchedule.classList.add('active');
+    if (panelSchedule) panelSchedule.style.display = 'block';
+  } else if (tab === 'financials') {
+    if (btnFinancials) btnFinancials.classList.add('active');
+    if (panelFinancials) panelFinancials.style.display = 'block';
+  } else {
+    if (btnAppts) btnAppts.classList.add('active');
+    if (panelAppts) panelAppts.style.display = 'block';
+  }
+};
+
+window.filterBarberAppts = function(filter, btnEl) {
+  state.barberApptFilter = filter;
+  if (btnEl && btnEl.parentElement) {
+    btnEl.parentElement.querySelectorAll('.mode-btn').forEach(b => b.classList.remove('active'));
+    btnEl.classList.add('active');
+  }
+  renderBarberAppointments(filter);
+};
+
+function renderBarberAppointments(filter = 'hoy') {
+  const container = document.getElementById('barberApptsContainer');
+  if (!container) return;
+
+  const appts = state.barberData.appointments || [];
+  const todayStr = new Date().toISOString().split('T')[0];
+
+  let filtered = appts;
+  if (filter === 'hoy') {
+    filtered = appts.filter(c => c.fecha === todayStr);
+  } else if (filter === 'pendientes') {
+    filtered = appts.filter(c => c.cita_estado === 'Pendiente');
+  } else if (filter === 'completadas') {
+    filtered = appts.filter(c => c.cita_estado === 'Completada');
+  }
+
+  if (filtered.length === 0) {
+    container.innerHTML = `
+      <div class="text-center py-5 text-secondary">
+        <i class="bi bi-calendar-x fs-1 d-block mb-2 text-warning"></i>
+        <h5 class="fw-bold text-light">No hay citas registradas con este filtro (${filter})</h5>
+        <p class="small text-secondary">Prueba seleccionando 'Todas' o 'Hoy' para visualizar las reservas.</p>
+      </div>
+    `;
+    return;
+  }
+
+  container.innerHTML = filtered.map(c => {
+    const isToday = c.fecha === todayStr;
+    const cleanPhone = (c.cliente_telefono || '').replace(/\D/g, '');
+    const waLink = cleanPhone ? `https://wa.me/${cleanPhone}` : '#';
+
+    let statusBadge = '';
+    if (c.cita_estado === 'Completada') {
+      statusBadge = '<span class="badge bg-success-subtle text-success border border-success-subtle px-3 py-2 fw-bold"><i class="bi bi-check2-circle me-1"></i> Completada</span>';
+    } else if (c.cita_estado === 'Confirmada') {
+      statusBadge = '<span class="badge bg-primary-subtle text-primary border border-primary-subtle px-3 py-2 fw-bold"><i class="bi bi-clock-history me-1"></i> Confirmada</span>';
+    } else if (c.cita_estado === 'Cancelada') {
+      statusBadge = '<span class="badge bg-danger-subtle text-danger border border-danger-subtle px-3 py-2 fw-bold"><i class="bi bi-x-circle me-1"></i> Cancelada</span>';
+    } else {
+      statusBadge = '<span class="badge bg-warning-subtle text-warning border border-warning-subtle px-3 py-2 fw-bold"><i class="bi bi-hourglass-split me-1"></i> Pendiente</span>';
+    }
+
+    return `
+      <div class="barber-appt-item shadow-sm">
+        <div class="d-flex flex-column flex-md-row align-items-md-center justify-content-between gap-3">
+          
+          <div class="d-flex align-items-center gap-3">
+            <div class="barber-appt-time-badge flex-shrink-0">
+              <i class="bi bi-clock"></i> ${formatTime(c.hora)}
+            </div>
+            <div>
+              <div class="d-flex align-items-center gap-2 flex-wrap">
+                <h5 class="fw-bold text-light mb-0">${escapeHtml(c.cliente_nombre)}</h5>
+                ${isToday ? '<span class="badge bg-danger text-white rounded-pill px-2">HOY</span>' : `<span class="badge bg-secondary-subtle text-secondary">${c.fecha}</span>`}
+              </div>
+              <div class="text-secondary small mt-1 d-flex flex-wrap gap-3">
+                <span><i class="bi bi-card-heading text-warning me-1"></i> Cédula: <strong class="text-light">${escapeHtml(c.cliente_cedula || '-')}</strong></span>
+                <span><i class="bi bi-telephone text-info me-1"></i> Tel: <a href="${waLink}" target="_blank" class="text-info text-decoration-none fw-semibold">${escapeHtml(c.cliente_telefono || '-')}</a></span>
+              </div>
+            </div>
+          </div>
+
+          <div class="d-flex flex-column flex-sm-row align-items-sm-center gap-3">
+            <div class="text-sm-end pe-md-2">
+              <strong class="text-light d-block">${escapeHtml(c.servicio_nombre)}</strong>
+              <span class="text-warning fw-bold fs-6">${formatCurrency(c.servicio_precio)}</span>
+              <span class="text-secondary small">(${c.duracion_minutos || 30} min)</span>
+            </div>
+
+            <div class="d-flex align-items-center gap-2 flex-wrap">
+              ${statusBadge}
+
+              ${c.cita_estado === 'Pendiente' ? `
+                <button type="button" class="btn btn-sm btn-outline-info rounded-pill px-3" onclick="barberChangeStatus(${c.id_cita}, 'Confirmada')" title="Confirmar cita">
+                  <i class="bi bi-check2 me-1"></i> Confirmar
+                </button>
+              ` : ''}
+
+              ${(c.cita_estado === 'Pendiente' || c.cita_estado === 'Confirmada') ? `
+                <button type="button" class="btn btn-sm btn-barber-gold rounded-pill px-3 fw-bold shadow-sm" onclick="openBarberPaymentModal(${c.id_cita}, '${escapeHtml(c.cliente_nombre)}', '${escapeHtml(c.servicio_nombre)}', ${c.servicio_precio}, '${c.fecha}', '${c.hora}')" title="Registrar cobro y completar">
+                  <i class="bi bi-cash-stack me-1"></i> Cobrar y Completar
+                </button>
+                <button type="button" class="btn btn-sm btn-outline-danger rounded-pill px-2" onclick="barberChangeStatus(${c.id_cita}, 'Cancelada')" title="Cancelar cita">
+                  <i class="bi bi-x-lg"></i>
+                </button>
+              ` : ''}
+
+              ${c.cita_estado === 'Completada' && c.id_pago ? `
+                <span class="badge bg-dark-subtle text-light border border-secondary-subtle px-2 py-1 small">
+                  <i class="bi bi-receipt text-warning me-1"></i> Pagado vía ${escapeHtml(c.metodo_pago || 'Caja')}
+                </span>
+              ` : ''}
+            </div>
+          </div>
+
+        </div>
+      </div>
+    `;
+  }).join('');
+}
+
+function renderBarberSchedule(schedule) {
+  const container = document.getElementById('barberScheduleCards');
+  if (!container) return;
+
+  if (schedule.length === 0) {
+    container.innerHTML = `<div class="col-12 text-center text-secondary py-4">No tienes horarios asignados aún en el sistema.</div>`;
+    return;
+  }
+
+  container.innerHTML = schedule.map(h => `
+    <div class="col-12 col-md-6 col-lg-4">
+      <div class="p-3 rounded-3 bg-dark-subtle border border-secondary-subtle d-flex align-items-center justify-content-between gap-3">
+        <div>
+          <span class="badge bg-warning text-dark fw-bold px-2 py-1 mb-1">${escapeHtml(h.dia_semana)}</span>
+          <h5 class="fw-bold text-light mb-1">${escapeHtml(h.nombre_turno)}</h5>
+          <span class="text-secondary small"><i class="bi bi-clock me-1"></i> ${formatTime(h.hora_inicio)} a ${formatTime(h.hora_fin)}</span>
+        </div>
+        <div class="brand-pole-emblem flex-shrink-0" style="width: 40px; height: 40px;">
+          <i class="bi bi-calendar-check fs-5 text-dark"></i>
+        </div>
+      </div>
+    </div>
+  `).join('');
+}
+
+function renderBarberFinancials(fin) {
+  const totalRec = document.getElementById('finTotalRecaudado');
+  const comTot = document.getElementById('finComisionTotal');
+  const comLiq = document.getElementById('finComisionLiquidada');
+  const tbody = document.getElementById('barberLiquidacionesTableBody');
+
+  if (totalRec) totalRec.innerText = formatCurrency(fin.total_recaudado || 0);
+  if (comTot) comTot.innerText = formatCurrency(fin.comision_ganada_total || 0);
+  if (comLiq) comLiq.innerText = formatCurrency(fin.comision_liquidada || 0);
+
+  if (!tbody) return;
+  const liqs = fin.liquidaciones || [];
+  if (liqs.length === 0) {
+    tbody.innerHTML = `<tr><td colspan="5" class="text-center py-4 text-secondary">Aún no hay liquidaciones de comisiones registradas para este barbero.</td></tr>`;
+    return;
+  }
+
+  tbody.innerHTML = liqs.map(l => `
+    <tr>
+      <td><span class="badge bg-dark-subtle border border-secondary-subtle font-monospace">#${l.id_liquidacion}</span></td>
+      <td><strong>${l.fecha_corte}</strong></td>
+      <td>${l.total_servicios} cortes</td>
+      <td class="text-warning fw-bold">${formatCurrency(l.monto_comision)}</td>
+      <td>
+        ${l.estado_pago === 'Pagado' ? 
+          '<span class="badge bg-success-subtle text-success border border-success-subtle px-2 py-1">Pagado</span>' : 
+          '<span class="badge bg-warning-subtle text-warning border border-warning-subtle px-2 py-1">Pendiente</span>'}
+      </td>
+    </tr>
+  `).join('');
+}
+
+window.barberChangeStatus = async function(idCita, nuevoEstado) {
+  if (nuevoEstado === 'Cancelada') {
+    if (!confirm('¿Estás seguro de que deseas cancelar esta cita?')) return;
+  }
+
+  try {
+    await apiRequest(`${API_BASE}?action=barber_update_cita`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        id_cita: idCita,
+        id_barbero: state.activeBarber.id_barbero,
+        estado: nuevoEstado
+      })
+    });
+
+    showToast('Estado Actualizado', `La cita fue cambiada a ${nuevoEstado}.`, 'success');
+    await loadBarberData();
+    await loadStats();
+  } catch (err) {
+    // Handled in apiRequest
+  }
+};
+
+window.openBarberPaymentModal = function(idCita, clientName, serviceName, servicePrice, fecha, hora) {
+  const citaInput = document.getElementById('barberPayCitaId');
+  const clientEl = document.getElementById('barberPayClientName');
+  const servEl = document.getElementById('barberPayServiceName');
+  const dateEl = document.getElementById('barberPayDateTime');
+  const montoInput = document.getElementById('barberPayMonto');
+
+  if (citaInput) citaInput.value = idCita;
+  if (clientEl) clientEl.innerText = clientName;
+  if (servEl) servEl.innerText = serviceName;
+  if (dateEl) dateEl.innerText = `${fecha} a las ${formatTime(hora)}`;
+  if (montoInput) montoInput.value = parseFloat(servicePrice).toFixed(2);
+
+  const modal = bootstrap.Modal.getOrCreateInstance(document.getElementById('barberPaymentModal'));
+  modal.show();
+};
+
+window.submitBarberPayment = async function(e) {
+  if (e) e.preventDefault();
+  const idCita = parseInt(document.getElementById('barberPayCitaId').value, 10);
+  const monto = parseFloat(document.getElementById('barberPayMonto').value);
+  const metodoPago = document.getElementById('barberPayMetodo').value;
+
+  if (!idCita || isNaN(monto) || monto <= 0) {
+    showToast('Error', 'Ingresa un monto válido para el cobro.', 'error');
+    return;
+  }
+
+  const btnSubmit = document.getElementById('btnSubmitBarberPayment');
+  try {
+    if (btnSubmit) {
+      btnSubmit.disabled = true;
+      btnSubmit.innerHTML = '<span class="spinner-border spinner-border-sm me-1"></span> Procesando...';
+    }
+
+    const res = await apiRequest(`${API_BASE}?action=barber_register_pago`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        id_cita: idCita,
+        id_barbero: state.activeBarber.id_barbero,
+        monto: monto,
+        metodo_pago: metodoPago
+      })
+    });
+
+    bootstrap.Modal.getOrCreateInstance(document.getElementById('barberPaymentModal')).hide();
+    showToast('¡Cobro Exitoso!', res.message || 'Pago registrado y cita completada.', 'success');
+
+    // Refresh Barber dashboard, Admin stats & Admin charts
+    await loadBarberData();
+    await loadStats();
+    if (state.currentTab === 'analytics') {
+      loadAnalyticsAndCharts();
+    }
+  } catch (err) {
+    // Handled
+  } finally {
+    if (btnSubmit) {
+      btnSubmit.disabled = false;
+      btnSubmit.innerHTML = '<i class="bi bi-check2-circle me-1"></i> Registrar Cobro';
+    }
+  }
+};

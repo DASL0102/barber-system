@@ -752,3 +752,126 @@ body.barber-app-body {
   font-size: 0.82rem;
   color: var(--barber-text-muted);
 }
+
+/* ==========================================================================
+   CHARTS & ANALYTICS STYLES
+   ========================================================================== */
+.barber-chart-card {
+  background: var(--barber-surface-1);
+  border: 1px solid var(--barber-border-subtle);
+  border-radius: 14px;
+  transition: all 0.25s ease;
+  position: relative;
+  overflow: hidden;
+}
+
+.barber-chart-card:hover {
+  border-color: rgba(245, 158, 11, 0.3);
+  box-shadow: 0 8px 24px rgba(0, 0, 0, 0.4);
+}
+
+.chart-header {
+  padding: 1.1rem 1.25rem 0.6rem;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  border-bottom: 1px solid rgba(255, 255, 255, 0.05);
+}
+
+.chart-title {
+  font-size: 1rem;
+  font-weight: 700;
+  color: var(--barber-text);
+  margin: 0;
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+}
+
+.chart-subtitle {
+  font-size: 0.78rem;
+  color: var(--barber-text-dim);
+  margin: 0;
+}
+
+.chart-container-box {
+  position: relative;
+  padding: 1rem;
+  min-height: 260px;
+  width: 100%;
+}
+
+.chart-insight-card {
+  background: linear-gradient(135deg, rgba(245, 158, 11, 0.08), rgba(19, 24, 34, 0.95));
+  border: 1px solid rgba(245, 158, 11, 0.25);
+  border-radius: 14px;
+}
+
+/* ==========================================================================
+   BARBER PORTAL STYLES
+   ========================================================================== */
+.barber-profile-card {
+  background: var(--barber-surface-1);
+  border: 1px solid var(--barber-border-subtle);
+  border-radius: 14px;
+  transition: all 0.25s cubic-bezier(0.16, 1, 0.3, 1);
+  cursor: pointer;
+  position: relative;
+  overflow: hidden;
+}
+
+.barber-profile-card:hover {
+  border-color: var(--barber-gold);
+  transform: translateY(-4px);
+  box-shadow: 0 12px 28px rgba(0, 0, 0, 0.5), 0 0 15px rgba(245, 158, 11, 0.2);
+}
+
+.barber-profile-avatar {
+  width: 68px;
+  height: 68px;
+  border-radius: 50%;
+  background: linear-gradient(135deg, rgba(245, 158, 11, 0.2), rgba(37, 99, 235, 0.2));
+  border: 2px solid var(--barber-gold);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 1.8rem;
+  color: var(--barber-gold-light);
+  margin: 0 auto 0.75rem;
+}
+
+.barber-appt-item {
+  background: var(--barber-surface-1);
+  border: 1px solid var(--barber-border-subtle);
+  border-radius: 12px;
+  padding: 1rem 1.25rem;
+  margin-bottom: 0.85rem;
+  transition: all 0.2s ease;
+}
+
+.barber-appt-item:hover {
+  border-color: rgba(245, 158, 11, 0.35);
+  background: var(--barber-surface-2);
+}
+
+.barber-appt-time-badge {
+  background: rgba(245, 158, 11, 0.12);
+  border: 1px solid rgba(245, 158, 11, 0.3);
+  color: var(--barber-gold);
+  font-weight: 700;
+  font-family: monospace;
+  padding: 0.35rem 0.65rem;
+  border-radius: 8px;
+  font-size: 0.92rem;
+  display: inline-flex;
+  align-items: center;
+  gap: 0.35rem;
+}
+
+.barber-shift-pill {
+  background: rgba(37, 99, 235, 0.12);
+  border: 1px solid rgba(37, 99, 235, 0.28);
+  color: #93c5fd;
+  border-radius: 8px;
+  padding: 0.4rem 0.75rem;
+}

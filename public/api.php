@@ -82,6 +82,84 @@ try {
         exit;
     }
 
+    // Action: Analytics Data for Admin Charts & Dashboard
+    if ($action === 'analytics' && $method === 'GET') {
+        $analytics = $crud->getAnalyticsData();
+        echo json_encode([
+            'success' => true,
+            'data' => $analytics
+        ]);
+        exit;
+    }
+
+    // Action: Get full dashboard data for a Barber (Barber View)
+    if ($action === 'barber_data' && $method === 'GET') {
+        $idBarbero = isset($_GET['id_barbero']) ? (int)$_GET['id_barbero'] : 0;
+        if ($idBarbero <= 0) {
+            http_response_code(400);
+            echo json_encode(['success' => false, 'error' => 'ID de barbero requerido.']);
+            exit;
+        }
+
+        $financials = $crud->getBarberFinancials($idBarbero);
+        $appointments = $crud->getBarberAppointments($idBarbero);
+        $schedule = $crud->getBarberSchedule($idBarbero);
+
+        echo json_encode([
+            'success' => true,
+            'data' => [
+                'financials' => $financials,
+                'appointments' => $appointments,
+                'schedule' => $schedule
+            ]
+        ]);
+        exit;
+    }
+
+    // Action: Barber updates appointment status (Confirmada, Cancelada, etc.)
+    if ($action === 'barber_update_cita' && ($method === 'POST' || $method === 'PATCH')) {
+        $input = json_decode(file_get_contents('php://input'), true) ?? $_POST;
+        $idCita = isset($input['id_cita']) ? (int)$input['id_cita'] : 0;
+        $idBarbero = isset($input['id_barbero']) ? (int)$input['id_barbero'] : 0;
+        $estado = isset($input['estado']) ? trim($input['estado']) : '';
+
+        if ($idCita <= 0 || $idBarbero <= 0 || empty($estado)) {
+            http_response_code(400);
+            echo json_encode(['success' => false, 'error' => 'Datos insuficientes para actualizar el estado de la cita.']);
+            exit;
+        }
+
+        $crud->updateBarberAppointmentStatus($idCita, $idBarbero, $estado);
+        echo json_encode([
+            'success' => true,
+            'message' => "Estado de la cita actualizado a '{$estado}' correctamente."
+        ]);
+        exit;
+    }
+
+    // Action: Barber registers customer payment & completes appointment
+    if ($action === 'barber_register_pago' && $method === 'POST') {
+        $input = json_decode(file_get_contents('php://input'), true) ?? $_POST;
+        $idCita = isset($input['id_cita']) ? (int)$input['id_cita'] : 0;
+        $idBarbero = isset($input['id_barbero']) ? (int)$input['id_barbero'] : 0;
+        $monto = isset($input['monto']) ? (float)$input['monto'] : 0.0;
+        $metodoPago = isset($input['metodo_pago']) ? trim($input['metodo_pago']) : 'Efectivo';
+
+        if ($idCita <= 0 || $idBarbero <= 0 || $monto <= 0) {
+            http_response_code(400);
+            echo json_encode(['success' => false, 'error' => 'Monto o cita no válidos para el registro de pago.']);
+            exit;
+        }
+
+        $pago = $crud->registerBarberPayment($idCita, $idBarbero, $monto, $metodoPago);
+        echo json_encode([
+            'success' => true,
+            'message' => 'Cobro registrado exitosamente y cita completada.',
+            'data' => $pago
+        ]);
+        exit;
+    }
+
     // Special resource: Options for Selects
     if ($resource === 'options' && $method === 'GET') {
         $options = $crud->getOptions();
